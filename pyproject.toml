@@ -1,0 +1,13 @@
+[project]
+name = "oacg"
+version = "0.1.0"
+description = "Open Agent Collaboration Gateway for bounded, auditable collaboration between heterogeneous AI systems."
+readme = "README.md"
+requires-python = ">=3.11"
+license = {text = "Apache-2.0"}
+authors = [{name = "Glappy Inc."}]
+keywords = ["ai", "agents", "multi-agent", "openai", "grok", "orchestration", "collaboration"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
