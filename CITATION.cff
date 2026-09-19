@@ -5,7 +5,9 @@ type: software
 version: 0.1.0
 date-released: 2026-09-19
 authors:
-  - name: "Glappy Inc."
+  - family-names: "Avre"
+    given-names: "Russell"
+    affiliation: "Glappy Inc."
 repository-code: "https://github.com/glappycom/open-agent-collaboration-gateway"
 license: Apache-2.0
 keywords:
@@ -15,3 +17,6 @@ keywords:
   - orchestration
   - OpenAI
   - Grok
+  - Claude
+  - AI governance
+  - agent interoperability
