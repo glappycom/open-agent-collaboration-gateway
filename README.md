@@ -2,7 +2,7 @@
 
 **A small open-source gateway for bounded, auditable collaboration between heterogeneous AI systems.**
 
-OACG v0.1 lets OpenAI and xAI/Grok work on the same task through a controlled collaboration loop instead of relying on a person to copy responses between chat windows.
+OACG v0.2 lets OpenAI and xAI/Grok work on the same task through a controlled collaboration loop and now includes a lightweight browser console so users can run collaborations without sending JSON manually.
 
 > The goal is not to make AI systems talk more. The goal is to let independent systems collaborate when collaboration creates measurable value—while preserving budgets, auditability, and human authority.
 
@@ -13,12 +13,13 @@ Most AI integrations focus on **routing**: choose one model and send it a reques
 OACG explores **collaboration**: allow more than one model to propose, critique, revise, and synthesize work under explicit limits.
 
 ```text
-Client / application
+Browser / API client
         |
         v
 +---------------------------+
 | OACG                      |
 |---------------------------|
+| web console               |
 | policy + approval gate    |
 | bounded turn controller   |
 | shared transcript         |
@@ -32,8 +33,9 @@ Client / application
    OpenAI         xAI/Grok
 ```
 
-## v0.1 capabilities
+## v0.2 capabilities
 
+- Browser collaboration console at `/`.
 - `POST /ask` — call one configured provider.
 - `POST /collaborate` — run a bounded alternating OpenAI ↔ Grok workflow.
 - `GET /providers` — inspect configured adapters and model names without exposing keys.
@@ -75,7 +77,13 @@ Never commit `.env`.
 uvicorn app.main:app --reload --port 8080
 ```
 
-Interactive API documentation:
+Open the browser console:
+
+```text
+http://localhost:8080/
+```
+
+Interactive API documentation remains available at:
 
 ```text
 http://localhost:8080/docs
@@ -86,6 +94,20 @@ Or run with Docker:
 ```bash
 docker compose up --build
 ```
+
+## Using the web console
+
+The web console supports two workflows:
+
+### Collaborate
+
+Enter a task, optional shared context, starter model, turn limit, collaboration mode, and risk level. OACG coordinates the bounded OpenAI ↔ Grok exchange and renders each turn plus the final synthesis.
+
+### Ask one model
+
+Switch to **Ask one model** when you want to call OpenAI or Grok directly without collaboration.
+
+The console also shows provider configuration status, conversation ID, model metadata, latency, approval-gate messages, and a copyable final answer.
 
 ## Example: ask one provider
 
@@ -126,7 +148,7 @@ By default, high- and critical-risk requests do not start until approval is expl
 }
 ```
 
-The v0.1 `approved: true` flag is intentionally a prototype mechanism. Production deployments should replace it with authenticated users, authorization policy, and signed approval records.
+The current `approved: true` mechanism is intentionally a prototype control. Production deployments should replace it with authenticated users, authorization policy, and signed approval records.
 
 ## Provider defaults
 
@@ -157,7 +179,7 @@ The default test suite does **not** make live provider calls.
 
 ## Security status
 
-v0.1 is a public **reference implementation / release candidate**, not an internet-facing production control plane. See [SECURITY.md](SECURITY.md) for deployment guidance.
+OACG is a public **reference implementation**, not an internet-facing production control plane. See [SECURITY.md](SECURITY.md) for deployment guidance.
 
 Before production use, add at minimum authentication, role-based authorization, managed secrets, production storage, rate limits, circuit breakers, data-retention/redaction policies, stronger prompt-injection controls, and signed human approvals.
 
@@ -189,7 +211,7 @@ Contributions are welcome. Start with [CONTRIBUTING.md](CONTRIBUTING.md). Provid
 
 ## Citation
 
-A `CITATION.cff` file is included so releases can be cited as research software. The project is intended to be archived through Zenodo once the public GitHub repository is connected and the first release is tagged.
+A `CITATION.cff` file is included so releases can be cited as research software. GitHub releases are archived through Zenodo for persistent citation.
 
 ## License
 
