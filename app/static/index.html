@@ -1,0 +1,687 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>OACG — Open Agent Collaboration Gateway</title>
+  <meta name="description" content="Bounded, auditable collaboration between heterogeneous AI systems." />
+  <style>
+    :root {
+      --bg: #0a0b0d;
+      --panel: #111318;
+      --panel-2: #171a20;
+      --text: #f5f7fa;
+      --muted: #9aa3b2;
+      --line: #2a2f38;
+      --accent: #ffffff;
+      --good: #8fd19e;
+      --warn: #e8c879;
+      --danger: #ef9a9a;
+      --radius: 16px;
+      --shadow: 0 18px 50px rgba(0,0,0,.28);
+    }
+
+    * { box-sizing: border-box; }
+    html { color-scheme: dark; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background:
+        radial-gradient(circle at 20% 0%, rgba(255,255,255,.055), transparent 36%),
+        var(--bg);
+      color: var(--text);
+    }
+
+    button, input, textarea, select { font: inherit; }
+
+    .shell {
+      width: min(1180px, calc(100% - 32px));
+      margin: 0 auto;
+      padding: 28px 0 56px;
+    }
+
+    header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 20px;
+      margin-bottom: 28px;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+    }
+
+    .mark {
+      width: 42px;
+      height: 42px;
+      border: 1px solid #3b414d;
+      border-radius: 12px;
+      display: grid;
+      place-items: center;
+      font-weight: 750;
+      letter-spacing: -.04em;
+      background: linear-gradient(145deg, #1d2129, #0c0e12);
+    }
+
+    h1 {
+      font-size: clamp(20px, 2.5vw, 28px);
+      line-height: 1.1;
+      margin: 0;
+      letter-spacing: -.035em;
+    }
+
+    .subtitle {
+      margin-top: 5px;
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    .status {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 11px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      color: var(--muted);
+      font-size: 13px;
+      background: rgba(17,19,24,.75);
+    }
+
+    .dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--warn);
+    }
+
+    .dot.ok { background: var(--good); }
+
+    .grid {
+      display: grid;
+      grid-template-columns: minmax(320px, 420px) minmax(0, 1fr);
+      gap: 18px;
+      align-items: start;
+    }
+
+    .panel {
+      background: rgba(17,19,24,.94);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      overflow: hidden;
+    }
+
+    .panel-head {
+      padding: 18px 20px;
+      border-bottom: 1px solid var(--line);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+
+    .panel-head h2 {
+      margin: 0;
+      font-size: 15px;
+      letter-spacing: -.01em;
+    }
+
+    .panel-body { padding: 20px; }
+
+    .tabs {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 6px;
+      padding: 5px;
+      background: #0d0f13;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      margin-bottom: 18px;
+    }
+
+    .tab {
+      appearance: none;
+      border: 0;
+      background: transparent;
+      color: var(--muted);
+      border-radius: 8px;
+      padding: 9px 10px;
+      cursor: pointer;
+    }
+
+    .tab.active {
+      background: #22262e;
+      color: var(--text);
+    }
+
+    label {
+      display: block;
+      margin: 14px 0 7px;
+      font-size: 12px;
+      font-weight: 650;
+      color: #c5cad3;
+      letter-spacing: .01em;
+    }
+
+    textarea, input, select {
+      width: 100%;
+      border: 1px solid #303642;
+      border-radius: 10px;
+      background: #0c0e12;
+      color: var(--text);
+      padding: 11px 12px;
+      outline: none;
+      transition: border-color .15s ease, box-shadow .15s ease;
+    }
+
+    textarea { min-height: 132px; resize: vertical; }
+
+    textarea:focus, input:focus, select:focus {
+      border-color: #727b8a;
+      box-shadow: 0 0 0 3px rgba(145,154,169,.12);
+    }
+
+    .row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+
+    .approval {
+      display: flex;
+      gap: 10px;
+      align-items: flex-start;
+      margin-top: 14px;
+      padding: 11px;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: #0d0f13;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.45;
+    }
+
+    .approval input {
+      width: auto;
+      margin-top: 2px;
+    }
+
+    .primary {
+      width: 100%;
+      margin-top: 16px;
+      border: 0;
+      border-radius: 11px;
+      padding: 12px 14px;
+      font-weight: 750;
+      cursor: pointer;
+      background: var(--accent);
+      color: #090a0c;
+      transition: transform .12s ease, opacity .12s ease;
+    }
+
+    .primary:hover { transform: translateY(-1px); }
+    .primary:disabled { cursor: not-allowed; opacity: .55; transform: none; }
+
+    .meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 7px;
+    }
+
+    .chip {
+      padding: 5px 8px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      font-size: 11px;
+      color: var(--muted);
+      background: #0c0e12;
+    }
+
+    .empty {
+      min-height: 420px;
+      display: grid;
+      place-items: center;
+      text-align: center;
+      color: var(--muted);
+      padding: 42px;
+    }
+
+    .empty strong {
+      display: block;
+      color: var(--text);
+      margin-bottom: 8px;
+      font-size: 18px;
+    }
+
+    .transcript {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .message {
+      border: 1px solid var(--line);
+      border-radius: 13px;
+      background: #0d0f13;
+      overflow: hidden;
+    }
+
+    .message-head {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      align-items: center;
+      padding: 10px 12px;
+      border-bottom: 1px solid var(--line);
+      font-size: 12px;
+    }
+
+    .provider {
+      font-weight: 750;
+      text-transform: uppercase;
+      letter-spacing: .06em;
+    }
+
+    .message-body {
+      padding: 14px 15px;
+      white-space: pre-wrap;
+      line-height: 1.58;
+      color: #e7eaf0;
+      font-size: 14px;
+    }
+
+    .final {
+      margin-top: 18px;
+      border: 1px solid #454c58;
+      border-radius: 14px;
+      background: linear-gradient(180deg, #171b22, #101217);
+    }
+
+    .final .message-head { font-size: 13px; }
+
+    .result-top {
+      display: none;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      margin-bottom: 14px;
+    }
+
+    .conversation {
+      color: var(--muted);
+      font-size: 11px;
+      overflow-wrap: anywhere;
+    }
+
+    .secondary {
+      border: 1px solid var(--line);
+      background: #111318;
+      color: var(--text);
+      padding: 7px 9px;
+      border-radius: 9px;
+      cursor: pointer;
+      font-size: 12px;
+    }
+
+    .error {
+      display: none;
+      margin-top: 14px;
+      padding: 11px 12px;
+      border: 1px solid #6e3e3e;
+      color: #ffc0c0;
+      background: #241315;
+      border-radius: 10px;
+      font-size: 12px;
+      line-height: 1.45;
+    }
+
+    .hidden { display: none !important; }
+
+    footer {
+      color: #707887;
+      font-size: 11px;
+      margin-top: 18px;
+      text-align: center;
+    }
+
+    @media (max-width: 860px) {
+      .grid { grid-template-columns: 1fr; }
+      header { align-items: flex-start; flex-direction: column; }
+      .empty { min-height: 240px; }
+    }
+
+    @media (max-width: 520px) {
+      .row { grid-template-columns: 1fr; }
+      .shell { width: min(100% - 20px, 1180px); padding-top: 18px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <header>
+      <div class="brand">
+        <div class="mark">OA</div>
+        <div>
+          <h1>Open Agent Collaboration Gateway</h1>
+          <div class="subtitle">Bounded, auditable collaboration across AI providers.</div>
+        </div>
+      </div>
+      <div class="status"><span id="healthDot" class="dot"></span><span id="healthText">Checking gateway…</span></div>
+    </header>
+
+    <main class="grid">
+      <section class="panel">
+        <div class="panel-head">
+          <h2>New task</h2>
+          <div class="meta" id="providerMeta"></div>
+        </div>
+        <div class="panel-body">
+          <div class="tabs">
+            <button class="tab active" data-mode="collaborate">Collaborate</button>
+            <button class="tab" data-mode="ask">Ask one model</button>
+          </div>
+
+          <form id="taskForm">
+            <label for="task">Task</label>
+            <textarea id="task" required placeholder="Example: Review the Jollof OS architecture and identify the three biggest technical risks."></textarea>
+
+            <label for="context">Shared context <span style="color:#71798a;font-weight:400">(optional)</span></label>
+            <textarea id="context" style="min-height:84px" placeholder="Relevant constraints, assumptions, or project context."></textarea>
+
+            <div id="collabFields">
+              <div class="row">
+                <div>
+                  <label for="starter">Starter</label>
+                  <select id="starter">
+                    <option value="openai">OpenAI</option>
+                    <option value="grok">Grok</option>
+                  </select>
+                </div>
+                <div>
+                  <label for="turns">Maximum turns</label>
+                  <select id="turns">
+                    <option>2</option>
+                    <option selected>4</option>
+                    <option>6</option>
+                  </select>
+                </div>
+              </div>
+
+              <label for="collabMode">Collaboration mode</label>
+              <select id="collabMode">
+                <option value="solve">Solve</option>
+                <option value="critique">Critique</option>
+                <option value="architecture" selected>Architecture review</option>
+              </select>
+            </div>
+
+            <div id="askFields" class="hidden">
+              <label for="provider">Provider</label>
+              <select id="provider">
+                <option value="openai">OpenAI</option>
+                <option value="grok">Grok</option>
+              </select>
+            </div>
+
+            <label for="risk">Risk level</label>
+            <select id="risk">
+              <option value="low" selected>Low</option>
+              <option value="medium">Medium</option>
+              <option value="high">High</option>
+              <option value="critical">Critical</option>
+            </select>
+
+            <label class="approval">
+              <input id="approved" type="checkbox" />
+              <span>I explicitly approve this request if the selected risk level requires human approval. Leave unchecked for normal low-risk work.</span>
+            </label>
+
+            <button id="runButton" class="primary" type="submit">Start collaboration</button>
+            <div id="errorBox" class="error"></div>
+          </form>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-head">
+          <h2>Workspace</h2>
+          <div class="meta">
+            <span class="chip">bounded turns</span>
+            <span class="chip">audit transcript</span>
+            <span class="chip">human approval gate</span>
+          </div>
+        </div>
+        <div class="panel-body">
+          <div id="emptyState" class="empty">
+            <div>
+              <strong>Give the agents a problem to work on.</strong>
+              OACG will coordinate the selected workflow and preserve the transcript, model metadata, latency, and final synthesis.
+            </div>
+          </div>
+
+          <div id="resultArea" class="hidden">
+            <div id="resultTop" class="result-top">
+              <div id="conversationId" class="conversation"></div>
+              <button id="copyButton" class="secondary" type="button">Copy final</button>
+            </div>
+            <div id="transcript" class="transcript"></div>
+            <div id="finalCard" class="final hidden">
+              <div class="message-head">
+                <span class="provider">Final synthesis</span>
+                <span id="finalMeta" class="conversation"></span>
+              </div>
+              <div id="finalText" class="message-body"></div>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <footer>OACG v0.2 web console · Open-source reference implementation by Glappy Inc.</footer>
+  </div>
+
+  <script>
+    const els = {
+      taskForm: document.getElementById('taskForm'),
+      task: document.getElementById('task'),
+      context: document.getElementById('context'),
+      starter: document.getElementById('starter'),
+      turns: document.getElementById('turns'),
+      collabMode: document.getElementById('collabMode'),
+      provider: document.getElementById('provider'),
+      risk: document.getElementById('risk'),
+      approved: document.getElementById('approved'),
+      runButton: document.getElementById('runButton'),
+      errorBox: document.getElementById('errorBox'),
+      collabFields: document.getElementById('collabFields'),
+      askFields: document.getElementById('askFields'),
+      emptyState: document.getElementById('emptyState'),
+      resultArea: document.getElementById('resultArea'),
+      resultTop: document.getElementById('resultTop'),
+      transcript: document.getElementById('transcript'),
+      finalCard: document.getElementById('finalCard'),
+      finalText: document.getElementById('finalText'),
+      finalMeta: document.getElementById('finalMeta'),
+      conversationId: document.getElementById('conversationId'),
+      copyButton: document.getElementById('copyButton'),
+      healthDot: document.getElementById('healthDot'),
+      healthText: document.getElementById('healthText'),
+      providerMeta: document.getElementById('providerMeta')
+    };
+
+    let uiMode = 'collaborate';
+    let lastFinal = '';
+
+    document.querySelectorAll('.tab').forEach(tab => {
+      tab.addEventListener('click', () => {
+        document.querySelectorAll('.tab').forEach(x => x.classList.remove('active'));
+        tab.classList.add('active');
+        uiMode = tab.dataset.mode;
+        const collab = uiMode === 'collaborate';
+        els.collabFields.classList.toggle('hidden', !collab);
+        els.askFields.classList.toggle('hidden', collab);
+        els.runButton.textContent = collab ? 'Start collaboration' : 'Ask model';
+      });
+    });
+
+    function escapeHtml(value) {
+      return String(value)
+        .replaceAll('&', '&amp;')
+        .replaceAll('<', '&lt;')
+        .replaceAll('>', '&gt;')
+        .replaceAll('"', '&quot;')
+        .replaceAll("'", '&#039;');
+    }
+
+    function showError(message) {
+      els.errorBox.textContent = message;
+      els.errorBox.style.display = 'block';
+    }
+
+    function clearError() {
+      els.errorBox.textContent = '';
+      els.errorBox.style.display = 'none';
+    }
+
+    function setBusy(busy) {
+      els.runButton.disabled = busy;
+      els.runButton.textContent = busy
+        ? 'Working…'
+        : (uiMode === 'collaborate' ? 'Start collaboration' : 'Ask model');
+    }
+
+    function renderResult(data) {
+      els.emptyState.classList.add('hidden');
+      els.resultArea.classList.remove('hidden');
+      els.resultTop.style.display = 'flex';
+      els.conversationId.textContent = 'Conversation: ' + data.conversation_id;
+      els.transcript.innerHTML = '';
+      els.finalCard.classList.add('hidden');
+      lastFinal = data.final || '';
+
+      if (data.status === 'approval_required') {
+        showError(data.approval_reason || 'This request requires explicit approval.');
+        return;
+      }
+
+      for (const msg of (data.messages || [])) {
+        const meta = [
+          'turn ' + msg.turn,
+          msg.model || '',
+          Number.isFinite(msg.latency_ms) ? msg.latency_ms + ' ms' : ''
+        ].filter(Boolean).join(' · ');
+
+        els.transcript.insertAdjacentHTML('beforeend', `
+          <article class="message">
+            <div class="message-head">
+              <span class="provider">${escapeHtml(msg.provider)}</span>
+              <span class="conversation">${escapeHtml(meta)}</span>
+            </div>
+            <div class="message-body">${escapeHtml(msg.content)}</div>
+          </article>
+        `);
+      }
+
+      if (data.final) {
+        els.finalCard.classList.remove('hidden');
+        els.finalText.textContent = data.final;
+        const finalMeta = [
+          data.final_model || '',
+          Number.isFinite(data.final_latency_ms) ? data.final_latency_ms + ' ms' : ''
+        ].filter(Boolean).join(' · ');
+        els.finalMeta.textContent = finalMeta;
+      }
+    }
+
+    async function runTask(event) {
+      event.preventDefault();
+      clearError();
+      setBusy(true);
+
+      const common = {
+        risk_level: els.risk.value,
+        approved: els.approved.checked
+      };
+
+      let path, payload;
+      if (uiMode === 'collaborate') {
+        path = '/collaborate';
+        payload = {
+          ...common,
+          task: els.task.value.trim(),
+          starter: els.starter.value,
+          turns: Number(els.turns.value),
+          shared_context: els.context.value.trim() || null,
+          mode: els.collabMode.value
+        };
+      } else {
+        path = '/ask';
+        payload = {
+          ...common,
+          provider: els.provider.value,
+          prompt: els.task.value.trim(),
+          system_context: els.context.value.trim() || null
+        };
+      }
+
+      try {
+        const response = await fetch(path, {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify(payload)
+        });
+
+        const data = await response.json();
+        if (!response.ok) {
+          const detail = typeof data.detail === 'string' ? data.detail : JSON.stringify(data.detail || data);
+          throw new Error(detail);
+        }
+        renderResult(data);
+      } catch (error) {
+        showError(error.message || 'The request failed.');
+      } finally {
+        setBusy(false);
+      }
+    }
+
+    async function hydrateStatus() {
+      try {
+        const [health, providers] = await Promise.all([
+          fetch('/health').then(r => r.json()),
+          fetch('/providers').then(r => r.json())
+        ]);
+
+        els.healthDot.classList.add('ok');
+        els.healthText.textContent = 'Gateway online · v' + health.version;
+
+        els.providerMeta.innerHTML = '';
+        for (const p of providers.providers || []) {
+          const state = p.configured ? 'ready' : 'key missing';
+          els.providerMeta.insertAdjacentHTML(
+            'beforeend',
+            '<span class="chip">' + escapeHtml(p.name) + ' · ' + escapeHtml(state) + '</span>'
+          );
+        }
+      } catch {
+        els.healthText.textContent = 'Gateway unavailable';
+      }
+    }
+
+    els.taskForm.addEventListener('submit', runTask);
+    els.copyButton.addEventListener('click', async () => {
+      if (!lastFinal) return;
+      await navigator.clipboard.writeText(lastFinal);
+      const old = els.copyButton.textContent;
+      els.copyButton.textContent = 'Copied';
+      setTimeout(() => { els.copyButton.textContent = old; }, 1200);
+    });
+
+    hydrateStatus();
+  </script>
+</body>
+</html>
