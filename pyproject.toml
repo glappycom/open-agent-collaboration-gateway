@@ -1,6 +1,6 @@
 [project]
 name = "oacg"
-version = "0.1.0"
+version = "0.2.0"
 description = "Open Agent Collaboration Gateway for bounded, auditable collaboration between heterogeneous AI systems."
 readme = "README.md"
 requires-python = ">=3.11"
