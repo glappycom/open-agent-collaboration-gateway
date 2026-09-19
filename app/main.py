@@ -1,12 +1,18 @@
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
+from fastapi.responses import FileResponse
 
 from .config import settings
 from .db import init_db, load_messages
 from .gateway import ask, collaborate
 from .providers import ProviderError, provider_configs
 from .schemas import AskRequest, CollaborateRequest, GatewayResponse
+
+
+STATIC_DIR = Path(__file__).resolve().parent / "static"
+WEB_CONSOLE = STATIC_DIR / "index.html"
 
 
 @asynccontextmanager
@@ -20,10 +26,15 @@ app = FastAPI(
     version=settings.app_version,
     description=(
         "A small, provider-aware gateway for bounded collaboration between heterogeneous AI systems. "
-        "v0.1 ships with OpenAI and xAI/Grok adapters."
+        "v0.2 adds a browser console on top of the OpenAI and xAI/Grok adapters."
     ),
     lifespan=lifespan,
 )
+
+
+@app.get("/", include_in_schema=False)
+def web_console():
+    return FileResponse(WEB_CONSOLE)
 
 
 @app.get("/health")
