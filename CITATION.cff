@@ -1,0 +1,17 @@
+cff-version: 1.2.0
+title: "Open Agent Collaboration Gateway (OACG)"
+message: "If you use OACG in research, please cite the software release."
+type: software
+version: 0.1.0
+date-released: 2026-09-19
+authors:
+  - name: "Glappy Inc."
+repository-code: "https://github.com/glappycom/open-agent-collaboration-gateway"
+license: Apache-2.0
+keywords:
+  - artificial intelligence
+  - multi-agent systems
+  - model collaboration
+  - orchestration
+  - OpenAI
+  - Grok
