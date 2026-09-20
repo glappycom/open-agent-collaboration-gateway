@@ -121,3 +121,15 @@ def test_idempotency_key_conflict_is_rejected(monkeypatch):
 
     assert first.status_code == 200
     assert conflict.status_code == 409
+
+
+def test_cancel_endpoint_marks_conversation_cancelled(monkeypatch):
+    monkeypatch.setattr(main_module.settings, "oacg_access_token", "")
+    main_module.cancellation_registry.reset()
+
+    with TestClient(main_module.app) as client:
+        response = client.post("/conversations/conv-cancel/cancel")
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "cancel_requested"
+    assert main_module.cancellation_registry.is_cancelled("conv-cancel")
