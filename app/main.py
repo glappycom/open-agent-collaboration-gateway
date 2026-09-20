@@ -8,7 +8,13 @@ from fastapi import Depends, FastAPI, Header, HTTPException, Request
 from fastapi.responses import FileResponse
 
 from .config import settings
-from .controls import CircuitOpenError, HostControlError, request_rate_limiter
+from .controls import (
+    CircuitOpenError,
+    HostControlError,
+    RequestCancelledError,
+    cancellation_registry,
+    request_rate_limiter,
+)
 from .db import (
     get_idempotency_record,
     init_db,
@@ -143,6 +149,8 @@ def ask_endpoint(req: AskRequest, _: None = Depends(require_request_access)):
         raise HTTPException(status_code=413, detail=str(exc)) from exc
     except CircuitOpenError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except RequestCancelledError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     except HostControlError as exc:
         raise HTTPException(status_code=429, detail=str(exc)) from exc
     except ProviderError as exc:
@@ -163,10 +171,18 @@ def collaborate_endpoint(req: CollaborateRequest, _: None = Depends(require_requ
         raise HTTPException(status_code=413, detail=str(exc)) from exc
     except CircuitOpenError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except RequestCancelledError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     except HostControlError as exc:
         raise HTTPException(status_code=429, detail=str(exc)) from exc
     except ProviderError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+
+@app.post("/conversations/{conversation_id}/cancel")
+def cancel_conversation(conversation_id: str, _: None = Depends(require_request_access)):
+    cancellation_registry.cancel(conversation_id)
+    return {"conversation_id": conversation_id, "status": "cancel_requested"}
 
 
 @app.get("/conversations/{conversation_id}")
