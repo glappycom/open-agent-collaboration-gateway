@@ -2,7 +2,7 @@ cff-version: 1.2.0
 title: "Open Agent Collaboration Gateway (OACG)"
 message: "If you use OACG in research, please cite the software release."
 type: software
-version: 0.1.0
+version: 0.3.0
 date-released: 2026-09-19
 authors:
   - family-names: "Avre"
@@ -20,3 +20,4 @@ keywords:
   - Claude
   - AI governance
   - agent interoperability
+  - broker architecture
