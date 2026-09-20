@@ -22,6 +22,7 @@ class Settings(BaseSettings):
     max_context_chars: int = 24000
     max_prompt_chars: int = 32000
     max_provider_calls_per_request: int = 7
+    max_fallback_calls_per_request: int = 1
     max_requests_per_minute: int = 60
 
     approval_risk_level: str = "high"
