@@ -1,11 +1,20 @@
+import hashlib
+import json
+import secrets
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException
+from fastapi import Depends, FastAPI, Header, HTTPException, Request
 from fastapi.responses import FileResponse
 
 from .config import settings
-from .db import init_db, load_messages
+from .controls import CircuitOpenError, HostControlError, request_rate_limiter
+from .db import (
+    get_idempotency_record,
+    init_db,
+    load_messages,
+    store_idempotency_record,
+)
 from .gateway import ask, collaborate
 from .providers import ProviderError, provider_configs
 from .schemas import AskRequest, CollaborateRequest, GatewayResponse
@@ -26,10 +35,67 @@ app = FastAPI(
     version=settings.app_version,
     description=(
         "A small, provider-aware gateway for bounded collaboration between heterogeneous AI systems. "
-        "v0.2 adds a browser console on top of the OpenAI and xAI/Grok adapters."
+        "v0.3 hardening adds a versioned broker contract and host-enforced controls."
     ),
     lifespan=lifespan,
 )
+
+
+def _extract_access_token(authorization: str | None, x_oacg_token: str | None) -> str:
+    if x_oacg_token:
+        return x_oacg_token
+    if authorization and authorization.lower().startswith("bearer "):
+        return authorization[7:].strip()
+    return ""
+
+
+def require_request_access(
+    request: Request,
+    authorization: str | None = Header(default=None),
+    x_oacg_token: str | None = Header(default=None, alias="X-OACG-Token"),
+) -> None:
+    configured = settings.oacg_access_token
+    if configured:
+        supplied = _extract_access_token(authorization, x_oacg_token)
+        if not supplied or not secrets.compare_digest(supplied, configured):
+            raise HTTPException(status_code=401, detail="valid OACG access token required")
+
+    client_key = request.client.host if request.client else "unknown"
+    if not request_rate_limiter.allow(client_key, settings.max_requests_per_minute):
+        raise HTTPException(status_code=429, detail="OACG request rate limit exceeded")
+
+
+def _request_hash(req: AskRequest | CollaborateRequest) -> str:
+    payload = req.model_dump(mode="json", exclude={"idempotency_key"})
+    canonical = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    return hashlib.sha256(canonical).hexdigest()
+
+
+def _cached_response(req: AskRequest | CollaborateRequest) -> tuple[str | None, GatewayResponse | None]:
+    if not req.idempotency_key:
+        return None, None
+
+    request_hash = _request_hash(req)
+    record = get_idempotency_record(req.idempotency_key, settings.idempotency_ttl_seconds)
+    if record is None:
+        return request_hash, None
+
+    if record["request_hash"] != request_hash:
+        raise HTTPException(
+            status_code=409,
+            detail="idempotency key was already used for a different request",
+        )
+
+    return request_hash, GatewayResponse.model_validate_json(record["response_json"])
+
+
+def _store_response(req: AskRequest | CollaborateRequest, request_hash: str | None, response: GatewayResponse) -> None:
+    if req.idempotency_key and request_hash:
+        store_idempotency_record(
+            req.idempotency_key,
+            request_hash,
+            response.model_dump_json(),
+        )
 
 
 @app.get("/", include_in_schema=False)
@@ -57,9 +123,13 @@ def providers():
 
 
 @app.post("/ask", response_model=GatewayResponse)
-def ask_endpoint(req: AskRequest):
+def ask_endpoint(req: AskRequest, _: None = Depends(require_request_access)):
+    request_hash, cached = _cached_response(req)
+    if cached is not None:
+        return cached
+
     try:
-        return ask(
+        response = ask(
             req.provider,
             req.prompt,
             req.conversation_id,
@@ -67,22 +137,38 @@ def ask_endpoint(req: AskRequest):
             req.risk_level,
             req.approved,
         )
+        _store_response(req, request_hash, response)
+        return response
     except ValueError as exc:
         raise HTTPException(status_code=413, detail=str(exc)) from exc
+    except CircuitOpenError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except HostControlError as exc:
+        raise HTTPException(status_code=429, detail=str(exc)) from exc
     except ProviderError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
 
 
 @app.post("/collaborate", response_model=GatewayResponse)
-def collaborate_endpoint(req: CollaborateRequest):
+def collaborate_endpoint(req: CollaborateRequest, _: None = Depends(require_request_access)):
+    request_hash, cached = _cached_response(req)
+    if cached is not None:
+        return cached
+
     try:
-        return collaborate(req)
+        response = collaborate(req)
+        _store_response(req, request_hash, response)
+        return response
     except ValueError as exc:
         raise HTTPException(status_code=413, detail=str(exc)) from exc
+    except CircuitOpenError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except HostControlError as exc:
+        raise HTTPException(status_code=429, detail=str(exc)) from exc
     except ProviderError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
 
 
 @app.get("/conversations/{conversation_id}")
-def conversation(conversation_id: str):
+def conversation(conversation_id: str, _: None = Depends(require_request_access)):
     return {"conversation_id": conversation_id, "messages": load_messages(conversation_id, limit=200)}
