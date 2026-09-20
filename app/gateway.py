@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime, timedelta, timezone
 
 from .config import settings
-from .controls import HostControlError, controlled_call, redact_text
+from .controls import HostControlError, cancellation_registry, controlled_call, redact_text
 from .db import load_messages, log_message
 from .protocol import MessageKind, BrokerEnvelope, new_envelope
 from .schemas import Provider, RiskLevel, CollaborateRequest, MessageOut, GatewayResponse
@@ -84,6 +84,7 @@ def ask(
     _validate_text("system_context", system_context)
     cid = conversation_id or str(uuid.uuid4())
     trace_id = str(uuid.uuid4())
+    cancellation_registry.require_active(cid)
 
     if _approval_required(risk_level, approved):
         return GatewayResponse(
@@ -141,6 +142,7 @@ def collaborate(req: CollaborateRequest) -> GatewayResponse:
     _validate_text("shared_context", req.shared_context)
     cid = req.conversation_id or str(uuid.uuid4())
     trace_id = str(uuid.uuid4())
+    cancellation_registry.require_active(cid)
 
     if _approval_required(req.risk_level, req.approved):
         return GatewayResponse(
@@ -167,6 +169,7 @@ def collaborate(req: CollaborateRequest) -> GatewayResponse:
 
     last_output = ""
     for i in range(1, turns + 1):
+        cancellation_registry.require_active(cid)
         other = Provider.grok if current == Provider.openai else Provider.openai
         if i == 1:
             prompt = (
@@ -226,6 +229,7 @@ def collaborate(req: CollaborateRequest) -> GatewayResponse:
         transcript.append(_message_out(current, i, response_envelope))
         current = other
 
+    cancellation_registry.require_active(cid)
     final_provider = Provider.openai
     final_prompt = (
         "Synthesize the following bounded AI collaboration into one executive-quality answer.\n\n"
