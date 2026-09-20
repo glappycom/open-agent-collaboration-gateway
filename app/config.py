@@ -21,6 +21,7 @@ class Settings(BaseSettings):
     approval_risk_level: str = "high"
     provider_store_responses: bool = False
     provider_timeout_seconds: float = 45.0
+    max_provider_output_chars: int = 64000
     provider_max_retries: int = 2
     provider_retry_backoff_seconds: float = 0.25
     circuit_breaker_failures: int = 3
