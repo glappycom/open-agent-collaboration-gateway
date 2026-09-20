@@ -3,7 +3,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class Settings(BaseSettings):
     app_name: str = "Open Agent Collaboration Gateway"
-    app_version: str = "0.2.0"
+    app_version: str = "0.3.0"
 
     openai_api_key: str = ""
     xai_api_key: str = ""
