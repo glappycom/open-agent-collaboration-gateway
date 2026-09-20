@@ -19,6 +19,10 @@ class CircuitOpenError(HostControlError):
     pass
 
 
+class RequestCancelledError(HostControlError):
+    pass
+
+
 @dataclass
 class _BreakerState:
     failures: int = 0
@@ -130,4 +134,29 @@ class SlidingWindowRateLimiter:
             self._events.clear()
 
 
+class CancellationRegistry:
+    def __init__(self) -> None:
+        self._cancelled: set[str] = set()
+        self._lock = threading.Lock()
+
+    def cancel(self, conversation_id: str) -> None:
+        with self._lock:
+            self._cancelled.add(conversation_id)
+
+    def is_cancelled(self, conversation_id: str) -> bool:
+        with self._lock:
+            return conversation_id in self._cancelled
+
+    def require_active(self, conversation_id: str) -> None:
+        if self.is_cancelled(conversation_id):
+            raise RequestCancelledError(
+                f"conversation '{conversation_id}' was cancelled by the OACG host"
+            )
+
+    def reset(self) -> None:
+        with self._lock:
+            self._cancelled.clear()
+
+
 request_rate_limiter = SlidingWindowRateLimiter()
+cancellation_registry = CancellationRegistry()
