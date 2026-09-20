@@ -8,6 +8,7 @@ from app.schemas import Provider
 def setup_function():
     controls.reset_circuit_breakers()
     controls.request_rate_limiter.reset()
+    controls.cancellation_registry.reset()
 
 
 def test_redact_text_masks_provider_secrets():
@@ -58,3 +59,9 @@ def test_rate_limiter_is_bounded():
     assert limiter.allow("client", limit=2, window_seconds=60)
     assert limiter.allow("client", limit=2, window_seconds=60)
     assert not limiter.allow("client", limit=2, window_seconds=60)
+
+
+def test_cancellation_registry_blocks_cancelled_conversation():
+    controls.cancellation_registry.cancel("conv-123")
+    with pytest.raises(controls.RequestCancelledError):
+        controls.cancellation_registry.require_active("conv-123")
