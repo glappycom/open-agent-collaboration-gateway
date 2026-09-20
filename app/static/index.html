@@ -428,6 +428,13 @@
               </select>
             </div>
 
+            <label for="fallback">Fallback provider <span style="color:#71798a;font-weight:400">(optional, bounded)</span></label>
+            <select id="fallback">
+              <option value="">None</option>
+              <option value="openai">OpenAI</option>
+              <option value="grok">Grok</option>
+            </select>
+
             <label for="risk">Risk level</label>
             <select id="risk">
               <option value="low" selected>Low</option>
@@ -482,7 +489,7 @@
       </section>
     </main>
 
-    <footer>OACG v0.2 web console · Open-source reference implementation by Glappy Inc.</footer>
+    <footer>OACG v0.3 web console · Open-source reference implementation by Glappy Inc.</footer>
   </div>
 
   <script>
@@ -494,6 +501,7 @@
       turns: document.getElementById('turns'),
       collabMode: document.getElementById('collabMode'),
       provider: document.getElementById('provider'),
+      fallback: document.getElementById('fallback'),
       risk: document.getElementById('risk'),
       approved: document.getElementById('approved'),
       runButton: document.getElementById('runButton'),
@@ -559,14 +567,20 @@
       els.emptyState.classList.add('hidden');
       els.resultArea.classList.remove('hidden');
       els.resultTop.style.display = 'flex';
-      els.conversationId.textContent = 'Conversation: ' + data.conversation_id;
+      const terminal = data.terminal_state ? ' · ' + data.terminal_state : '';
+      const fallback = data.fallback_provider ? ' · fallback: ' + data.fallback_provider : '';
+      els.conversationId.textContent = 'Conversation: ' + data.conversation_id + terminal + fallback;
       els.transcript.innerHTML = '';
       els.finalCard.classList.add('hidden');
       lastFinal = data.final || '';
 
       if (data.status === 'approval_required') {
-        showError(data.approval_reason || 'This request requires explicit approval.');
+        showError(data.approval_reason || data.terminal_reason || 'This request requires explicit approval.');
         return;
+      }
+
+      if (data.status === 'partial' || data.status === 'failed') {
+        showError(data.terminal_reason || ('Workflow ended: ' + (data.terminal_state || data.status)));
       }
 
       for (const msg of (data.messages || [])) {
@@ -605,7 +619,8 @@
 
       const common = {
         risk_level: els.risk.value,
-        approved: els.approved.checked
+        approved: els.approved.checked,
+        fallback_provider: els.fallback.value || null
       };
 
       let path, payload;
