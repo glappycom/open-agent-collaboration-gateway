@@ -49,14 +49,22 @@ def _client(provider: Provider):
             "The 'openai' package is required at runtime. Install dependencies with: pip install -r requirements.txt"
         ) from exc
 
+    common = {
+        "timeout": settings.provider_timeout_seconds,
+        "max_retries": 0,
+    }
+
     if provider == Provider.openai:
         if not settings.openai_api_key:
             raise ProviderError("OPENAI_API_KEY is not configured")
-        return OpenAI(api_key=settings.openai_api_key), settings.openai_model
+        return OpenAI(api_key=settings.openai_api_key, **common), settings.openai_model
 
     if not settings.xai_api_key:
         raise ProviderError("XAI_API_KEY is not configured")
-    return OpenAI(api_key=settings.xai_api_key, base_url="https://api.x.ai/v1"), settings.xai_model
+    return (
+        OpenAI(api_key=settings.xai_api_key, base_url="https://api.x.ai/v1", **common),
+        settings.xai_model,
+    )
 
 
 def call_model(provider: Provider, prompt: str, system_context: str | None = None) -> CallResult:
