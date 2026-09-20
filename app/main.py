@@ -144,6 +144,7 @@ def ask_endpoint(req: AskRequest, _: None = Depends(require_request_access)):
             req.system_context,
             req.risk_level,
             req.approved,
+            req.fallback_provider,
         )
         _store_response(req, request_hash, response)
         return response
