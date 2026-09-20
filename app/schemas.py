@@ -16,9 +16,21 @@ class RiskLevel(str, Enum):
     critical = "critical"
 
 
+class TerminalState(str, Enum):
+    completed = "completed"
+    partial = "partial"
+    budget_exhausted = "budget_exhausted"
+    policy_blocked = "policy_blocked"
+    provider_unavailable = "provider_unavailable"
+    timed_out = "timed_out"
+    cancelled = "cancelled"
+    failed = "failed"
+
+
 class AskRequest(BaseModel):
     prompt: str = Field(min_length=1)
     provider: Provider
+    fallback_provider: Provider | None = None
     conversation_id: str | None = None
     system_context: str | None = None
     risk_level: RiskLevel = RiskLevel.low
@@ -34,6 +46,7 @@ class AskRequest(BaseModel):
 class CollaborateRequest(BaseModel):
     task: str = Field(min_length=1)
     starter: Provider = Provider.openai
+    fallback_provider: Provider | None = None
     turns: int = Field(default=4, ge=1, le=12)
     conversation_id: str | None = None
     shared_context: str | None = None
@@ -70,7 +83,10 @@ class MessageOut(BaseModel):
 class GatewayResponse(BaseModel):
     conversation_id: str
     trace_id: str
-    status: Literal["completed", "approval_required"]
+    status: Literal["completed", "approval_required", "partial", "failed"]
+    terminal_state: TerminalState = TerminalState.completed
+    terminal_reason: str | None = None
+    fallback_provider: Provider | None = None
     messages: list[MessageOut]
     final: str | None = None
     final_model: str | None = None

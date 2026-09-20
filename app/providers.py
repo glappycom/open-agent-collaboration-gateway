@@ -22,6 +22,10 @@ class ProviderResponseError(ProviderError):
     pass
 
 
+class ProviderTimeoutError(ProviderError):
+    pass
+
+
 @dataclass(frozen=True)
 class ProviderConfig:
     name: Provider
@@ -159,6 +163,12 @@ class OpenAICompatibleAdapter:
         except ProviderError:
             raise
         except Exception as exc:
+            error_name = exc.__class__.__name__.lower()
+            error_text = str(exc).lower()
+            if "timeout" in error_name or "timed out" in error_text or "timeout" in error_text:
+                raise ProviderTimeoutError(
+                    f"{self.provider.value} request timed out"
+                ) from exc
             raise ProviderError(f"{self.provider.value} request failed: {exc}") from exc
 
         latency_ms = round((perf_counter() - started) * 1000)
