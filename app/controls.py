@@ -4,7 +4,7 @@ import re
 import threading
 import time
 from collections import defaultdict, deque
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 from .config import settings
 from .providers import CallResult, ProviderError, call_model
@@ -96,7 +96,7 @@ def controlled_call(provider: Provider, prompt: str, system_context: str | None 
         try:
             result = call_model(provider, prompt, system_context)
             _record_success(provider)
-            return result
+            return replace(result, attempts=attempt + 1)
         except ProviderError as exc:
             last_error = exc
             _record_failure(provider)
