@@ -188,7 +188,12 @@ def load_trace_telemetry(trace_id: str, limit: int = 200) -> list[dict]:
             """,
             (trace_id, limit),
         ).fetchall()
-    return [dict(r) for r in rows]
+    result = []
+    for row in rows:
+        item = dict(row)
+        item["metadata"] = json.loads(item["metadata"] or "{}")
+        result.append(item)
+    return result
 
 
 def telemetry_summary() -> dict:
