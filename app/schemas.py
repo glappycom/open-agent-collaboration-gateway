@@ -41,13 +41,22 @@ class MessageOut(BaseModel):
     turn: int
     model: str | None = None
     latency_ms: int | None = None
+    schema_version: str
+    trace_id: str
+    message_id: str
+    sender: str
+    recipient: str
+    sequence: int
 
 
 class GatewayResponse(BaseModel):
     conversation_id: str
+    trace_id: str
     status: Literal["completed", "approval_required"]
     messages: list[MessageOut]
     final: str | None = None
     final_model: str | None = None
     final_latency_ms: int | None = None
+    final_message_id: str | None = None
+    final_schema_version: str | None = None
     approval_reason: str | None = None
