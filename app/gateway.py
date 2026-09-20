@@ -2,6 +2,7 @@ import uuid
 
 from .config import settings
 from .db import load_messages, log_message
+from .protocol import MessageKind, BrokerEnvelope, new_envelope
 from .providers import call_model
 from .schemas import Provider, RiskLevel, CollaborateRequest, MessageOut, GatewayResponse
 
@@ -29,6 +30,32 @@ def _history_text(conversation_id: str) -> str:
     return rendered[-settings.max_context_chars:]
 
 
+def _log_envelope(conversation_id: str, provider: str, role: str, envelope: BrokerEnvelope) -> None:
+    log_message(
+        conversation_id,
+        provider,
+        role,
+        envelope.content,
+        {"broker_envelope": envelope.model_dump(mode="json")},
+    )
+
+
+def _message_out(provider: Provider, turn: int, envelope: BrokerEnvelope) -> MessageOut:
+    return MessageOut(
+        provider=provider,
+        content=envelope.content,
+        turn=turn,
+        model=envelope.model,
+        latency_ms=envelope.latency_ms,
+        schema_version=envelope.schema_version,
+        trace_id=envelope.trace_id,
+        message_id=envelope.message_id,
+        sender=envelope.sender,
+        recipient=envelope.recipient,
+        sequence=envelope.sequence,
+    )
+
+
 def ask(
     provider: Provider,
     prompt: str,
@@ -40,9 +67,12 @@ def ask(
     _validate_text("prompt", prompt)
     _validate_text("system_context", system_context)
     cid = conversation_id or str(uuid.uuid4())
+    trace_id = str(uuid.uuid4())
+
     if _approval_required(risk_level, approved):
         return GatewayResponse(
             conversation_id=cid,
+            trace_id=trace_id,
             status="approval_required",
             messages=[],
             approval_reason=f"Risk level '{risk_level.value}' requires explicit approval before an external model call.",
@@ -50,30 +80,42 @@ def ask(
 
     history = _history_text(cid)
     context = "\n\n".join(x for x in [system_context, history] if x)
-    log_message(cid, provider.value, "user", prompt, {"risk_level": risk_level.value})
-    result = call_model(provider, prompt, context or None)
-    log_message(
-        cid,
-        provider.value,
-        "assistant",
-        result.text,
-        {"model": result.model, "latency_ms": result.latency_ms},
+
+    request_envelope = new_envelope(
+        trace_id=trace_id,
+        sender="host",
+        recipient=provider.value,
+        kind=MessageKind.request,
+        sequence=1,
+        content=prompt,
+        metadata={"risk_level": risk_level.value},
     )
+    _log_envelope(cid, provider.value, "broker_request", request_envelope)
+
+    result = call_model(provider, prompt, context or None)
+
+    response_envelope = new_envelope(
+        trace_id=trace_id,
+        sender=provider.value,
+        recipient="host",
+        kind=MessageKind.final_synthesis,
+        sequence=2,
+        content=result.text,
+        model=result.model,
+        latency_ms=result.latency_ms,
+    )
+    _log_envelope(cid, provider.value, "broker_response", response_envelope)
+
     return GatewayResponse(
         conversation_id=cid,
+        trace_id=trace_id,
         status="completed",
-        messages=[
-            MessageOut(
-                provider=provider,
-                content=result.text,
-                turn=1,
-                model=result.model,
-                latency_ms=result.latency_ms,
-            )
-        ],
+        messages=[_message_out(provider, 1, response_envelope)],
         final=result.text,
         final_model=result.model,
         final_latency_ms=result.latency_ms,
+        final_message_id=response_envelope.message_id,
+        final_schema_version=response_envelope.schema_version,
     )
 
 
@@ -81,9 +123,12 @@ def collaborate(req: CollaborateRequest) -> GatewayResponse:
     _validate_text("task", req.task)
     _validate_text("shared_context", req.shared_context)
     cid = req.conversation_id or str(uuid.uuid4())
+    trace_id = str(uuid.uuid4())
+
     if _approval_required(req.risk_level, req.approved):
         return GatewayResponse(
             conversation_id=cid,
+            trace_id=trace_id,
             status="approval_required",
             messages=[],
             approval_reason=f"Risk level '{req.risk_level.value}' requires explicit approval before collaboration begins.",
@@ -93,6 +138,7 @@ def collaborate(req: CollaborateRequest) -> GatewayResponse:
     current = req.starter
     transcript: list[MessageOut] = []
     shared = req.shared_context or ""
+    sequence = 1
 
     mode_instruction = {
         "solve": "Work toward the best actionable solution. Challenge weak assumptions and add missing details.",
@@ -120,32 +166,44 @@ def collaborate(req: CollaborateRequest) -> GatewayResponse:
         history = _history_text(cid)
         system_context = (
             "You are participating in a bounded AI-to-AI collaboration gateway. "
-            "Do not attempt to contact external systems unless explicitly provided as tools. "
+            "All peer communication is mediated by the OACG host. "
+            "Do not attempt to establish direct model-to-model channels or contact external systems unless explicitly provided as tools. "
             "Never reveal secrets. Do not create recursive delegation. "
             f"You are {current.value}; your counterpart is {other.value}.\n\n"
             f"SHARED CONTEXT:\n{shared}\n\n"
             f"PRIOR TRANSCRIPT:\n{history}"
         )[-settings.max_context_chars:]
 
-        log_message(cid, current.value, "user", prompt, {"turn": i, "mode": req.mode})
+        request_envelope = new_envelope(
+            trace_id=trace_id,
+            sender="host",
+            recipient=current.value,
+            kind=MessageKind.request,
+            sequence=sequence,
+            content=prompt,
+            metadata={"turn": i, "mode": req.mode},
+        )
+        sequence += 1
+        _log_envelope(cid, current.value, "broker_request", request_envelope)
+
         result = call_model(current, prompt, system_context)
         last_output = result.text
-        log_message(
-            cid,
-            current.value,
-            "assistant",
-            result.text,
-            {"turn": i, "model": result.model, "latency_ms": result.latency_ms},
+
+        response_envelope = new_envelope(
+            trace_id=trace_id,
+            sender=current.value,
+            recipient="host",
+            kind=MessageKind.contribution,
+            sequence=sequence,
+            content=result.text,
+            model=result.model,
+            latency_ms=result.latency_ms,
+            metadata={"turn": i, "mode": req.mode},
         )
-        transcript.append(
-            MessageOut(
-                provider=current,
-                content=result.text,
-                turn=i,
-                model=result.model,
-                latency_ms=result.latency_ms,
-            )
-        )
+        sequence += 1
+        _log_envelope(cid, current.value, "broker_response", response_envelope)
+
+        transcript.append(_message_out(current, i, response_envelope))
         current = other
 
     final_provider = Provider.openai
@@ -160,20 +218,41 @@ def collaborate(req: CollaborateRequest) -> GatewayResponse:
         " (3) immediate next actions. Do not invent consensus."
     )
     final_context = (req.shared_context or "")[-settings.max_context_chars:]
-    final_result = call_model(final_provider, final_prompt, final_context or None)
-    log_message(
-        cid,
-        final_provider.value,
-        "assistant",
-        final_result.text,
-        {"kind": "final_synthesis", "model": final_result.model, "latency_ms": final_result.latency_ms},
+
+    final_request = new_envelope(
+        trace_id=trace_id,
+        sender="host",
+        recipient=final_provider.value,
+        kind=MessageKind.request,
+        sequence=sequence,
+        content=final_prompt,
+        metadata={"kind": "final_synthesis_request"},
     )
+    sequence += 1
+    _log_envelope(cid, final_provider.value, "broker_request", final_request)
+
+    final_result = call_model(final_provider, final_prompt, final_context or None)
+
+    final_envelope = new_envelope(
+        trace_id=trace_id,
+        sender=final_provider.value,
+        recipient="host",
+        kind=MessageKind.final_synthesis,
+        sequence=sequence,
+        content=final_result.text,
+        model=final_result.model,
+        latency_ms=final_result.latency_ms,
+    )
+    _log_envelope(cid, final_provider.value, "broker_response", final_envelope)
 
     return GatewayResponse(
         conversation_id=cid,
+        trace_id=trace_id,
         status="completed",
         messages=transcript,
         final=final_result.text,
         final_model=final_result.model,
         final_latency_ms=final_result.latency_ms,
+        final_message_id=final_envelope.message_id,
+        final_schema_version=final_envelope.schema_version,
     )
