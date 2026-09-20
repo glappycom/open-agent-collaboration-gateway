@@ -531,8 +531,10 @@ def collaborate(req: CollaborateRequest) -> GatewayResponse:
         return _terminal_response(
             conversation_id=cid,
             trace_id=trace_id,
-            terminal_state=_terminal_state_for_error(exc),
-            reason=f"final synthesis unavailable: {exc}",
+            terminal_state=TerminalState.partial,
+            reason=(
+                f"final synthesis unavailable ({_terminal_state_for_error(exc).value}): {exc}"
+            ),
             messages=transcript,
             final=last_output or None,
             fallback_provider=used_fallback,
