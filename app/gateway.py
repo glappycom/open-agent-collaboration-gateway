@@ -1,9 +1,10 @@
 import uuid
+from datetime import datetime, timedelta, timezone
 
 from .config import settings
+from .controls import HostControlError, cancellation_registry, controlled_call, redact_text
 from .db import load_messages, log_message
 from .protocol import MessageKind, BrokerEnvelope, new_envelope
-from .providers import call_model
 from .schemas import Provider, RiskLevel, CollaborateRequest, MessageOut, GatewayResponse
 
 RISK_ORDER = {"low": 0, "medium": 1, "high": 2, "critical": 3}
@@ -30,13 +31,19 @@ def _history_text(conversation_id: str) -> str:
     return rendered[-settings.max_context_chars:]
 
 
+def _deadline() -> datetime:
+    return datetime.now(timezone.utc) + timedelta(seconds=settings.provider_timeout_seconds)
+
+
 def _log_envelope(conversation_id: str, provider: str, role: str, envelope: BrokerEnvelope) -> None:
+    safe_content = redact_text(envelope.content)
+    safe_envelope = envelope.model_copy(update={"content": safe_content})
     log_message(
         conversation_id,
         provider,
         role,
-        envelope.content,
-        {"broker_envelope": envelope.model_dump(mode="json")},
+        safe_content,
+        {"broker_envelope": safe_envelope.model_dump(mode="json")},
     )
 
 
@@ -56,6 +63,15 @@ def _message_out(provider: Provider, turn: int, envelope: BrokerEnvelope) -> Mes
     )
 
 
+def _enforce_collaboration_call_quota(turns: int) -> None:
+    required_calls = turns + 1  # one provider call per turn plus final synthesis
+    if required_calls > settings.max_provider_calls_per_request:
+        raise HostControlError(
+            f"collaboration requires {required_calls} provider calls but host quota allows "
+            f"{settings.max_provider_calls_per_request}"
+        )
+
+
 def ask(
     provider: Provider,
     prompt: str,
@@ -68,6 +84,7 @@ def ask(
     _validate_text("system_context", system_context)
     cid = conversation_id or str(uuid.uuid4())
     trace_id = str(uuid.uuid4())
+    cancellation_registry.require_active(cid)
 
     if _approval_required(risk_level, approved):
         return GatewayResponse(
@@ -88,11 +105,12 @@ def ask(
         kind=MessageKind.request,
         sequence=1,
         content=prompt,
+        deadline_at=_deadline(),
         metadata={"risk_level": risk_level.value},
     )
     _log_envelope(cid, provider.value, "broker_request", request_envelope)
 
-    result = call_model(provider, prompt, context or None)
+    result = controlled_call(provider, prompt, context or None)
 
     response_envelope = new_envelope(
         trace_id=trace_id,
@@ -124,6 +142,7 @@ def collaborate(req: CollaborateRequest) -> GatewayResponse:
     _validate_text("shared_context", req.shared_context)
     cid = req.conversation_id or str(uuid.uuid4())
     trace_id = str(uuid.uuid4())
+    cancellation_registry.require_active(cid)
 
     if _approval_required(req.risk_level, req.approved):
         return GatewayResponse(
@@ -135,6 +154,8 @@ def collaborate(req: CollaborateRequest) -> GatewayResponse:
         )
 
     turns = min(req.turns, settings.max_turns)
+    _enforce_collaboration_call_quota(turns)
+
     current = req.starter
     transcript: list[MessageOut] = []
     shared = req.shared_context or ""
@@ -148,6 +169,7 @@ def collaborate(req: CollaborateRequest) -> GatewayResponse:
 
     last_output = ""
     for i in range(1, turns + 1):
+        cancellation_registry.require_active(cid)
         other = Provider.grok if current == Provider.openai else Provider.openai
         if i == 1:
             prompt = (
@@ -181,13 +203,14 @@ def collaborate(req: CollaborateRequest) -> GatewayResponse:
             kind=MessageKind.request,
             sequence=sequence,
             content=prompt,
+            deadline_at=_deadline(),
             metadata={"turn": i, "mode": req.mode},
         )
         sequence += 1
         _log_envelope(cid, current.value, "broker_request", request_envelope)
 
-        result = call_model(current, prompt, system_context)
-        last_output = result.text
+        result = controlled_call(current, prompt, system_context)
+        last_output = redact_text(result.text)
 
         response_envelope = new_envelope(
             trace_id=trace_id,
@@ -206,13 +229,14 @@ def collaborate(req: CollaborateRequest) -> GatewayResponse:
         transcript.append(_message_out(current, i, response_envelope))
         current = other
 
+    cancellation_registry.require_active(cid)
     final_provider = Provider.openai
     final_prompt = (
         "Synthesize the following bounded AI collaboration into one executive-quality answer.\n\n"
         f"TASK:\n{req.task}\n\n"
         "TRANSCRIPT:\n"
         + "\n\n".join(
-            f"TURN {m.turn} - {m.provider.value.upper()}:\n{m.content}" for m in transcript
+            f"TURN {m.turn} - {m.provider.value.upper()}:\n{redact_text(m.content)}" for m in transcript
         )
         + "\n\nReturn: (1) agreed recommendation, (2) unresolved disagreements/uncertainties, "
         " (3) immediate next actions. Do not invent consensus."
@@ -226,12 +250,13 @@ def collaborate(req: CollaborateRequest) -> GatewayResponse:
         kind=MessageKind.request,
         sequence=sequence,
         content=final_prompt,
+        deadline_at=_deadline(),
         metadata={"kind": "final_synthesis_request"},
     )
     sequence += 1
     _log_envelope(cid, final_provider.value, "broker_request", final_request)
 
-    final_result = call_model(final_provider, final_prompt, final_context or None)
+    final_result = controlled_call(final_provider, final_prompt, final_context or None)
 
     final_envelope = new_envelope(
         trace_id=trace_id,

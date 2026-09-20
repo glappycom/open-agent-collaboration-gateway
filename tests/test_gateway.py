@@ -27,6 +27,7 @@ def test_high_risk_requires_approval():
 
 def test_bounded_turns_synthesis_and_broker_identifiers(monkeypatch):
     monkeypatch.setattr(gateway.settings, "max_turns", 4)
+    monkeypatch.setattr(gateway.settings, "max_provider_calls_per_request", 5)
     calls = []
 
     def fake_call(provider, prompt, system_context=None):
@@ -37,7 +38,7 @@ def test_bounded_turns_synthesis_and_broker_identifiers(monkeypatch):
             latency_ms=7,
         )
 
-    monkeypatch.setattr(gateway, "call_model", fake_call)
+    monkeypatch.setattr(gateway, "controlled_call", fake_call)
     req = CollaborateRequest(task="Design a small API", starter=Provider.openai, turns=10, approved=True)
     result = gateway.collaborate(req)
 
@@ -58,6 +59,19 @@ def test_bounded_turns_synthesis_and_broker_identifiers(monkeypatch):
     assert result.messages[1].sender == "grok"
     assert result.messages[0].model == "test-openai"
     assert result.messages[0].latency_ms == 7
+
+
+def test_collaboration_call_quota_fails_closed(monkeypatch):
+    monkeypatch.setattr(gateway.settings, "max_turns", 6)
+    monkeypatch.setattr(gateway.settings, "max_provider_calls_per_request", 3)
+    req = CollaborateRequest(task="Design a small API", starter=Provider.openai, turns=4, approved=True)
+
+    try:
+        gateway.collaborate(req)
+    except gateway.HostControlError as exc:
+        assert "host quota" in str(exc)
+    else:
+        raise AssertionError("expected host quota failure")
 
 
 def test_prompt_limit(monkeypatch):
