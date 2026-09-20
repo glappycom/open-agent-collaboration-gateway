@@ -22,6 +22,7 @@ def test_high_risk_requires_approval():
     req = CollaborateRequest(task="Deploy production change", risk_level=RiskLevel.high, approved=False)
     result = gateway.collaborate(req)
     assert result.status == "approval_required"
+    assert result.terminal_state.value == "policy_blocked"
     assert result.trace_id
 
 
@@ -61,17 +62,16 @@ def test_bounded_turns_synthesis_and_broker_identifiers(monkeypatch):
     assert result.messages[0].latency_ms == 7
 
 
-def test_collaboration_call_quota_fails_closed(monkeypatch):
+def test_collaboration_call_quota_returns_budget_terminal_state(monkeypatch):
     monkeypatch.setattr(gateway.settings, "max_turns", 6)
     monkeypatch.setattr(gateway.settings, "max_provider_calls_per_request", 3)
     req = CollaborateRequest(task="Design a small API", starter=Provider.openai, turns=4, approved=True)
 
-    try:
-        gateway.collaborate(req)
-    except gateway.HostControlError as exc:
-        assert "host quota" in str(exc)
-    else:
-        raise AssertionError("expected host quota failure")
+    result = gateway.collaborate(req)
+
+    assert result.status == "failed"
+    assert result.terminal_state.value == "budget_exhausted"
+    assert "host quota" in result.terminal_reason
 
 
 def test_prompt_limit(monkeypatch):
