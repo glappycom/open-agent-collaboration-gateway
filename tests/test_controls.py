@@ -34,6 +34,7 @@ def test_controlled_call_retries_then_succeeds(monkeypatch):
 
     result = controls.controlled_call(Provider.openai, "hello")
     assert result.text == "ok"
+    assert result.attempts == 3
     assert attempts["count"] == 3
 
 

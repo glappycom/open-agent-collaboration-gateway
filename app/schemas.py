@@ -60,6 +60,11 @@ class MessageOut(BaseModel):
     sender: str
     recipient: str
     sequence: int
+    input_tokens: int | None = None
+    output_tokens: int | None = None
+    total_tokens: int | None = None
+    retry_count: int = 0
+    estimated_cost_usd: float | None = None
 
 
 class GatewayResponse(BaseModel):
@@ -72,4 +77,9 @@ class GatewayResponse(BaseModel):
     final_latency_ms: int | None = None
     final_message_id: str | None = None
     final_schema_version: str | None = None
+    final_input_tokens: int | None = None
+    final_output_tokens: int | None = None
+    final_total_tokens: int | None = None
+    final_retry_count: int = 0
+    final_estimated_cost_usd: float | None = None
     approval_reason: str | None = None

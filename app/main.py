@@ -19,7 +19,9 @@ from .db import (
     get_idempotency_record,
     init_db,
     load_messages,
+    load_trace_telemetry,
     store_idempotency_record,
+    telemetry_summary,
 )
 from .gateway import ask, collaborate
 from .providers import ProviderError, provider_configs
@@ -177,6 +179,16 @@ def collaborate_endpoint(req: CollaborateRequest, _: None = Depends(require_requ
         raise HTTPException(status_code=429, detail=str(exc)) from exc
     except ProviderError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+
+@app.get("/metrics")
+def metrics(_: None = Depends(require_request_access)):
+    return telemetry_summary()
+
+
+@app.get("/traces/{trace_id}")
+def trace_telemetry(trace_id: str, _: None = Depends(require_request_access)):
+    return {"trace_id": trace_id, "events": load_trace_telemetry(trace_id)}
 
 
 @app.post("/conversations/{conversation_id}/cancel")

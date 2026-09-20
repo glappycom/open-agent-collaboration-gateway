@@ -6,6 +6,7 @@ from .controls import HostControlError, cancellation_registry, controlled_call, 
 from .db import load_messages, log_message
 from .protocol import MessageKind, BrokerEnvelope, new_envelope
 from .schemas import Provider, RiskLevel, CollaborateRequest, MessageOut, GatewayResponse
+from .telemetry import record_provider_result, record_trace_event
 
 RISK_ORDER = {"low": 0, "medium": 1, "high": 2, "critical": 3}
 
@@ -60,6 +61,11 @@ def _message_out(provider: Provider, turn: int, envelope: BrokerEnvelope) -> Mes
         sender=envelope.sender,
         recipient=envelope.recipient,
         sequence=envelope.sequence,
+        input_tokens=envelope.metadata.get("input_tokens"),
+        output_tokens=envelope.metadata.get("output_tokens"),
+        total_tokens=envelope.metadata.get("total_tokens"),
+        retry_count=envelope.metadata.get("retry_count", 0),
+        estimated_cost_usd=envelope.metadata.get("estimated_cost_usd"),
     )
 
 
@@ -87,6 +93,12 @@ def ask(
     cancellation_registry.require_active(cid)
 
     if _approval_required(risk_level, approved):
+        record_trace_event(
+            trace_id=trace_id,
+            conversation_id=cid,
+            event_type="approval_required",
+            metadata={"risk_level": risk_level.value},
+        )
         return GatewayResponse(
             conversation_id=cid,
             trace_id=trace_id,
@@ -111,6 +123,13 @@ def ask(
     _log_envelope(cid, provider.value, "broker_request", request_envelope)
 
     result = controlled_call(provider, prompt, context or None)
+    result_meta = record_provider_result(
+        trace_id=trace_id,
+        conversation_id=cid,
+        provider=provider,
+        result=result,
+        turn=1,
+    )
 
     response_envelope = new_envelope(
         trace_id=trace_id,
@@ -121,8 +140,15 @@ def ask(
         content=result.text,
         model=result.model,
         latency_ms=result.latency_ms,
+        metadata=result_meta,
     )
     _log_envelope(cid, provider.value, "broker_response", response_envelope)
+    record_trace_event(
+        trace_id=trace_id,
+        conversation_id=cid,
+        event_type="request_completed",
+        metadata={"provider_calls": 1},
+    )
 
     return GatewayResponse(
         conversation_id=cid,
@@ -134,6 +160,11 @@ def ask(
         final_latency_ms=result.latency_ms,
         final_message_id=response_envelope.message_id,
         final_schema_version=response_envelope.schema_version,
+        final_input_tokens=result.input_tokens,
+        final_output_tokens=result.output_tokens,
+        final_total_tokens=result.total_tokens,
+        final_retry_count=max(0, result.attempts - 1),
+        final_estimated_cost_usd=result_meta.get("estimated_cost_usd"),
     )
 
 
@@ -145,6 +176,12 @@ def collaborate(req: CollaborateRequest) -> GatewayResponse:
     cancellation_registry.require_active(cid)
 
     if _approval_required(req.risk_level, req.approved):
+        record_trace_event(
+            trace_id=trace_id,
+            conversation_id=cid,
+            event_type="approval_required",
+            metadata={"risk_level": req.risk_level.value},
+        )
         return GatewayResponse(
             conversation_id=cid,
             trace_id=trace_id,
@@ -211,6 +248,13 @@ def collaborate(req: CollaborateRequest) -> GatewayResponse:
 
         result = controlled_call(current, prompt, system_context)
         last_output = redact_text(result.text)
+        result_meta = record_provider_result(
+            trace_id=trace_id,
+            conversation_id=cid,
+            provider=current,
+            result=result,
+            turn=i,
+        )
 
         response_envelope = new_envelope(
             trace_id=trace_id,
@@ -221,7 +265,7 @@ def collaborate(req: CollaborateRequest) -> GatewayResponse:
             content=result.text,
             model=result.model,
             latency_ms=result.latency_ms,
-            metadata={"turn": i, "mode": req.mode},
+            metadata={"turn": i, "mode": req.mode, **result_meta},
         )
         sequence += 1
         _log_envelope(cid, current.value, "broker_response", response_envelope)
@@ -257,6 +301,13 @@ def collaborate(req: CollaborateRequest) -> GatewayResponse:
     _log_envelope(cid, final_provider.value, "broker_request", final_request)
 
     final_result = controlled_call(final_provider, final_prompt, final_context or None)
+    final_meta = record_provider_result(
+        trace_id=trace_id,
+        conversation_id=cid,
+        provider=final_provider,
+        result=final_result,
+        kind="final_synthesis",
+    )
 
     final_envelope = new_envelope(
         trace_id=trace_id,
@@ -267,8 +318,15 @@ def collaborate(req: CollaborateRequest) -> GatewayResponse:
         content=final_result.text,
         model=final_result.model,
         latency_ms=final_result.latency_ms,
+        metadata=final_meta,
     )
     _log_envelope(cid, final_provider.value, "broker_response", final_envelope)
+    record_trace_event(
+        trace_id=trace_id,
+        conversation_id=cid,
+        event_type="collaboration_completed",
+        metadata={"turns": turns, "provider_calls": turns + 1},
+    )
 
     return GatewayResponse(
         conversation_id=cid,
@@ -280,4 +338,9 @@ def collaborate(req: CollaborateRequest) -> GatewayResponse:
         final_latency_ms=final_result.latency_ms,
         final_message_id=final_envelope.message_id,
         final_schema_version=final_envelope.schema_version,
+        final_input_tokens=final_result.input_tokens,
+        final_output_tokens=final_result.output_tokens,
+        final_total_tokens=final_result.total_tokens,
+        final_retry_count=max(0, final_result.attempts - 1),
+        final_estimated_cost_usd=final_meta.get("estimated_cost_usd"),
     )

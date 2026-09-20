@@ -38,6 +38,7 @@ class CallResult:
     input_tokens: int | None = None
     output_tokens: int | None = None
     total_tokens: int | None = None
+    attempts: int = 1
 
 
 class _NormalizedResponse(BaseModel):

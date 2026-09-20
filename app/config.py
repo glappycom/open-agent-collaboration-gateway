@@ -10,6 +10,12 @@ class Settings(BaseSettings):
     openai_model: str = "gpt-5.6-luna"
     xai_model: str = "grok-4.6"
 
+    # Optional cost rates. Leave at 0 when unknown; OACG will report cost as unavailable.
+    openai_input_cost_per_million: float = 0.0
+    openai_output_cost_per_million: float = 0.0
+    xai_input_cost_per_million: float = 0.0
+    xai_output_cost_per_million: float = 0.0
+
     database_path: str = "./gateway.db"
 
     max_turns: int = 6
