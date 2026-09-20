@@ -1,57 +1,61 @@
 # Open Agent Collaboration Gateway (OACG)
 
-**A small open-source gateway for bounded, auditable collaboration between heterogeneous AI systems.**
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.22850844.svg)](https://doi.org/10.5281/zenodo.22850844)
 
-OACG v0.2 lets OpenAI and xAI/Grok work on the same task through a controlled collaboration loop and now includes a lightweight browser console so users can run collaborations without sending JSON manually.
+**An open-source gateway for bounded, auditable collaboration between heterogeneous AI systems.**
 
-> The goal is not to make AI systems talk more. The goal is to let independent systems collaborate when collaboration creates measurable value—while preserving budgets, auditability, and human authority.
+OACG v0.3 lets OpenAI and xAI/Grok collaborate through a host-mediated control plane with a browser console, explicit budgets, audit traces, terminal states, bounded fallback, and protocol-level prevention of direct provider-to-provider transport.
 
-## Why OACG?
+> The goal is not to make AI systems talk more. The goal is to let independent systems collaborate when collaboration creates measurable value—while preserving budgets, observability, security, and human authority.
 
-Most AI integrations focus on **routing**: choose one model and send it a request.
-
-OACG explores **collaboration**: allow more than one model to propose, critique, revise, and synthesize work under explicit limits.
+## Architecture
 
 ```text
 Browser / API client
         |
         v
-+---------------------------+
-| OACG                      |
-|---------------------------|
-| web console               |
-| policy + approval gate    |
-| bounded turn controller   |
-| shared transcript         |
-| audit log                 |
-| provider adapters         |
-+------------+--------------+
-             |
-      +------+------+
-      |             |
-      v             v
-   OpenAI         xAI/Grok
++--------------------------------+
+| OACG Host                      |
+|--------------------------------|
+| web console                    |
+| auth / approval / quotas       |
+| versioned broker contract      |
+| bounded turn controller        |
+| retries / timeout / breaker    |
+| telemetry / audit              |
+| terminal states / fallback     |
++---------------+----------------+
+                |
+        +-------+-------+
+        |               |
+        v               v
+     OpenAI          xAI/Grok
+
+Provider -> Provider direct transport: prohibited
 ```
 
-## v0.2 capabilities
+## v0.3 capabilities
 
-- Browser collaboration console at `/`.
-- `POST /ask` — call one configured provider.
-- `POST /collaborate` — run a bounded alternating OpenAI ↔ Grok workflow.
-- `GET /providers` — inspect configured adapters and model names without exposing keys.
-- `GET /conversations/{id}` — retrieve the local audit transcript.
-- Low/medium/high/critical risk classification.
-- Approval gate for configurable risk levels.
-- Server-side collaboration turn cap.
-- Prompt/context bounds.
-- SQLite transcript and metadata log.
-- Per-call model and latency metadata.
-- Provider-side response storage disabled by default where supported.
-- Docker packaging and CI tests.
+- Browser collaboration console at `/`
+- `POST /ask` and `POST /collaborate`
+- Versioned host-owned broker envelopes
+- Stable trace/message identifiers and audit metadata
+- Optional access-token authentication
+- Human approval gate for configurable risk levels
+- Rate limiting and provider-call quotas
+- Host-owned retries, exponential backoff, timeouts and circuit breaking
+- Idempotency keys and duplicate-request protection
+- Strict provider adapter response validation
+- Prompt/context/output bounds
+- Secret-pattern redaction in broker logs
+- Token, latency, retry and optional cost telemetry
+- `GET /metrics` and `GET /traces/{trace_id}`
+- Explicit terminal states: completed, partial, budget exhausted, policy blocked, provider unavailable, timed out, cancelled, failed
+- Optional bounded fallback provider
+- Host-mediated transport enforcement: provider-to-provider broker envelopes fail closed
+- Docker packaging and GitHub Actions CI
 
 ## Quick start
-
-### 1. Clone and configure
 
 ```bash
 git clone https://github.com/glappycom/open-agent-collaboration-gateway.git
@@ -71,93 +75,57 @@ XAI_API_KEY=...
 
 Never commit `.env`.
 
-### 2. Run
+Run:
 
 ```bash
 uvicorn app.main:app --reload --port 8080
 ```
 
-Open the browser console:
+Open:
 
-```text
-http://localhost:8080/
-```
+- Browser console: `http://localhost:8080/`
+- API docs: `http://localhost:8080/docs`
 
-Interactive API documentation remains available at:
-
-```text
-http://localhost:8080/docs
-```
-
-Or run with Docker:
+Or:
 
 ```bash
 docker compose up --build
 ```
 
-## Using the web console
-
-The web console supports two workflows:
-
-### Collaborate
-
-Enter a task, optional shared context, starter model, turn limit, collaboration mode, and risk level. OACG coordinates the bounded OpenAI ↔ Grok exchange and renders each turn plus the final synthesis.
-
-### Ask one model
-
-Switch to **Ask one model** when you want to call OpenAI or Grok directly without collaboration.
-
-The console also shows provider configuration status, conversation ID, model metadata, latency, approval-gate messages, and a copyable final answer.
-
-## Example: ask one provider
-
-```bash
-curl -X POST http://localhost:8080/ask \
-  -H "Content-Type: application/json" \
-  -d '{
-    "provider":"grok",
-    "prompt":"Review this API architecture for failure modes.",
-    "risk_level":"low"
-  }'
-```
-
-## Example: bounded collaboration
+## Example collaboration
 
 ```bash
 curl -X POST http://localhost:8080/collaborate \
   -H "Content-Type: application/json" \
   -d '{
-    "task":"Design a provider-independent AI decision plane.",
+    "task":"Review a provider-independent AI decision plane.",
     "starter":"openai",
+    "fallback_provider":"grok",
     "turns":4,
     "mode":"architecture",
-    "shared_context":"Minimize provider lock-in, inference cost, and latency.",
+    "shared_context":"Minimize lock-in, inference cost, and latency.",
     "risk_level":"low"
   }'
 ```
 
-OACG alternates providers for the bounded number of turns and asks OpenAI to produce a final synthesis that explicitly preserves unresolved disagreement.
+OACG mediates each hop through the host, preserves the bounded transcript, and returns a final synthesis or an explicit bounded terminal outcome.
 
-## Approval gate
+## Security model
 
-By default, high- and critical-risk requests do not start until approval is explicitly supplied.
+OACG v0.3 adds meaningful broker hardening, but it remains a **reference implementation**, not a turnkey internet-facing production control plane.
 
-```json
-{
-  "status": "approval_required"
-}
-```
+The reference authentication, rate limiter, circuit breaker, cancellation registry, SQLite stores, and telemetry backend are process-local. Production deployments should use TLS, managed secrets, external identity/RBAC, distributed state, durable production storage, retention policy, and signed human approvals.
 
-The current `approved: true` mechanism is intentionally a prototype control. Production deployments should replace it with authenticated users, authorization policy, and signed approval records.
+See:
 
-## Provider defaults
-
-The sample configuration currently uses:
-
-- OpenAI: `gpt-5.6-luna`
-- xAI: `grok-4.6`
-
-Both are configurable through environment variables. OACG should not hard-code long-term application logic to a specific model ID.
+- [Broker contract](docs/BROKER_CONTRACT.md)
+- [Host controls](docs/HOST_CONTROLS.md)
+- [Provider adapters](docs/PROVIDER_ADAPTERS.md)
+- [Observability](docs/OBSERVABILITY.md)
+- [Threat testing](docs/THREAT_TESTING.md)
+- [Terminal states](docs/TERMINAL_STATES.md)
+- [Transport policy](docs/TRANSPORT_POLICY.md)
+- [Security policy](SECURITY.md)
 
 ## Tests
 
@@ -165,23 +133,7 @@ Both are configurable through environment variables. OACG should not hard-code l
 pytest -q
 ```
 
-The default test suite does **not** make live provider calls.
-
-## Design principles
-
-1. Provider independence over provider lock-in.
-2. Bounded collaboration over recursive agent loops.
-3. Human accountability for consequential actions.
-4. Observable cost, latency, and decisions.
-5. Deterministic software when deterministic software is sufficient.
-6. Explicit tool permissions and minimal privilege.
-7. Benchmark collaboration against strong single-model baselines.
-
-## Security status
-
-OACG is a public **reference implementation**, not an internet-facing production control plane. See [SECURITY.md](SECURITY.md) for deployment guidance.
-
-Before production use, add at minimum authentication, role-based authorization, managed secrets, production storage, rate limits, circuit breakers, data-retention/redaction policies, stronger prompt-injection controls, and signed human approvals.
+The default suite does not require live provider credentials and includes protocol, control-plane, adapter, telemetry, terminal-state, and adversarial regression tests.
 
 ## Research track: Decision Plane
 
@@ -195,23 +147,25 @@ See [`research/DECISION_PLANE_EXPERIMENT.md`](research/DECISION_PLANE_EXPERIMENT
 
 See [`docs/ROADMAP.md`](docs/ROADMAP.md).
 
-Near-term priorities include:
+Major next priorities:
 
-- Formal provider-adapter interface.
-- Claude support.
-- Pluggable shared memory/retrieval.
-- Token and dollar accounting.
-- Authenticated projects/tenants.
-- Evaluation harness comparing multi-model collaboration with single-model baselines.
-- Decision Plane integration.
+- Claude provider adapter
+- Pluggable shared memory/retrieval
+- Single-model vs multi-model evaluation harness
+- Decision Plane benchmark pilot
+- Production-grade distributed control state
 
 ## Contributing
 
-Contributions are welcome. Start with [CONTRIBUTING.md](CONTRIBUTING.md). Provider adapters, evaluation harnesses, governance mechanisms, observability, and collaboration protocols are especially useful.
+Contributions are welcome. Start with [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Citation
 
-A `CITATION.cff` file is included so releases can be cited as research software. GitHub releases are archived through Zenodo for persistent citation.
+The initial public software release is archived on Zenodo:
+
+**DOI: 10.5281/zenodo.22850844**
+
+A `CITATION.cff` file is included for research-software citation. Future GitHub releases are configured for automatic Zenodo preservation.
 
 ## License
 
@@ -219,4 +173,4 @@ Apache License 2.0. See [LICENSE](LICENSE).
 
 ## Maintainer
 
-OACG was initiated by **Glappy Inc.** as an open experiment in interoperable AI collaboration.
+OACG was initiated by **Russell Avre / Glappy Inc.** as an open experiment in interoperable AI collaboration.
