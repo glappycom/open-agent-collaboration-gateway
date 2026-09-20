@@ -97,3 +97,68 @@ def test_deadline_must_be_after_creation():
             nonce="1234567890abcdef",
             content="hello",
         )
+
+
+def test_direct_provider_to_provider_request_is_rejected():
+    now = datetime.now(timezone.utc)
+    with pytest.raises((ValidationError, ValueError)):
+        BrokerEnvelope(
+            schema_version=BROKER_SCHEMA_VERSION,
+            trace_id="trace-direct",
+            message_id="message-direct",
+            sender="openai",
+            recipient="grok",
+            kind=MessageKind.request,
+            sequence=1,
+            created_at=now,
+            nonce="1234567890abcdef",
+            content="direct peer request",
+        )
+
+
+def test_direct_provider_to_provider_contribution_is_rejected():
+    now = datetime.now(timezone.utc)
+    with pytest.raises((ValidationError, ValueError)):
+        BrokerEnvelope(
+            schema_version=BROKER_SCHEMA_VERSION,
+            trace_id="trace-direct",
+            message_id="message-direct",
+            sender="grok",
+            recipient="openai",
+            kind=MessageKind.contribution,
+            sequence=2,
+            created_at=now,
+            nonce="1234567890abcdef",
+            content="direct peer contribution",
+        )
+
+
+def test_host_cannot_impersonate_provider_contribution():
+    now = datetime.now(timezone.utc)
+    with pytest.raises((ValidationError, ValueError)):
+        BrokerEnvelope(
+            schema_version=BROKER_SCHEMA_VERSION,
+            trace_id="trace-host",
+            message_id="message-host",
+            sender="host",
+            recipient="host",
+            kind=MessageKind.contribution,
+            sequence=2,
+            created_at=now,
+            nonce="1234567890abcdef",
+            content="invalid contribution",
+        )
+
+
+def test_provider_response_must_return_to_host():
+    response = new_envelope(
+        trace_id="trace-response",
+        sender="openai",
+        recipient="host",
+        kind=MessageKind.contribution,
+        sequence=2,
+        content="valid response",
+    )
+
+    assert response.sender == "openai"
+    assert response.recipient == "host"
